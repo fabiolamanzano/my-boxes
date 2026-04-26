@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<link rel="manifest" href="manifest.json">
+<script>if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Mis Cajas — IA</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Mis Cajas">
+<meta name="theme-color" content="#1D9E75">
+<meta name="description" content="Inventario inteligente de cajas con IA">
+<link rel="apple-touch-icon" id="pwa-icon">
+<link rel="manifest" id="pwa-manifest">
+<script>
+(function(){
+  // Draw icon on canvas: teal bg + white box illustration
+  function makeIcon(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    const r = size * 0.18; // corner radius
+    // Background
+    ctx.beginPath();
+    ctx.moveTo(r,0); ctx.lineTo(size-r,0);
+    ctx.quadraticCurveTo(size,0,size,r);
+    ctx.lineTo(size,size-r);
+    ctx.quadraticCurveTo(size,size,size-r,size);
+    ctx.lineTo(r,size); ctx.quadraticCurveTo(0,size,0,size-r);
+    ctx.lineTo(0,r); ctx.quadraticCurveTo(0,0,r,0);
+    ctx.closePath();
+    ctx.fillStyle = '#1D9E75';
+    ctx.fill();
+    // Box body
+    const bx = size*0.2, by = size*0.38, bw = size*0.6, bh = size*0.4;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, size*0.04);
+    ctx.fill();
+    // Box lid
+    const lx = size*0.16, ly = size*0.28, lw = size*0.68, lh = size*0.13;
+    ctx.fillStyle = 'rgba(255,255,255,1)';
+    ctx.beginPath();
+    ctx.roundRect(lx, ly, lw, lh, size*0.04);
+    ctx.fill();
+    // Lid tab
+    ctx.fillStyle = 'rgba(255,255,255,1)';
+    ctx.beginPath();
+    ctx.roundRect(size*0.38, size*0.22, size*0.24, size*0.1, size*0.03);
+    ctx.fill();
+    // Center stripe on lid
+    ctx.fillStyle = '#1D9E75';
+    ctx.fillRect(size*0.46, size*0.29, size*0.08, size*0.12);
+    // Horizontal line on box
+    ctx.fillStyle = 'rgba(29,158,117,0.35)';
+    ctx.fillRect(bx + size*0.08, by + bh*0.45, bw - size*0.16, size*0.025);
+    return c.toDataURL('image/png');
+  }
+
+  window.addEventListener('DOMContentLoaded', function() {
+    const icon192 = makeIcon(192);
+    const icon512 = makeIcon(512);
+
+    // Apple touch icon
+    document.getElementById('pwa-icon').href = icon512;
+
+    // Web App Manifest as blob
+    const manifest = {
+      name: 'Mis Cajas',
+      short_name: 'Mis Cajas',
+      description: 'Inventario inteligente de cajas con IA',
+      start_url: './',
+      display: 'standalone',
+      background_color: '#f5f5f0',
+      theme_color: '#1D9E75',
+      orientation: 'portrait',
+      icons: [
+        { src: icon192, sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
+        { src: icon512, sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], {type: 'application/manifest+json'});
+    document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
+  });
+})();
+</script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root { --teal: #1D9E75; --teal-l: #E1F5EE; --teal-d: #0F6E56; --red: #E24B4A; --border: rgba(0,0,0,0.1); }
+body { font-family: -apple-system, system-ui, sans-serif; background: #f5f5f0; color: #1a1a18; max-width: 480px; margin: 0 auto; }
+.view { display: none; flex-direction: column; min-height: 100vh; }
+.view.active { display: flex; }
+.hdr { background: #fff; border-bottom: 0.5px solid var(--border); padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+.hdr-title { font-size: 17px; font-weight: 500; flex: 1; }
+.back-btn { background: none; border: none; cursor: pointer; color: var(--teal); font-size: 14px; padding: 4px 0; white-space: nowrap; }
+.del-hdr-btn { background: none; border: none; cursor: pointer; color: #bbb; font-size: 13px; }
+.content { flex: 1; padding: 14px 16px 20px; }
+.card { background: #fff; border: 0.5px solid var(--border); border-radius: 12px; padding: 14px 15px; margin-bottom: 12px; }
+.sec-label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: .07em; color: #aaa; margin-bottom: 10px; }
+.box-card { background: #fff; border: 0.5px solid var(--border); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+.box-thumb { width: 54px; height: 54px; border-radius: 9px; object-fit: cover; flex-shrink: 0; }
+.box-thumb-e { width: 54px; height: 54px; border-radius: 9px; background: var(--teal-l); display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 22px; }
+.box-name { font-size: 15px; font-weight: 500; }
+.box-meta { font-size: 12px; color: #888; margin-top: 2px; }
+.box-count { font-size: 12px; background: var(--teal-l); color: var(--teal-d); padding: 3px 10px; border-radius: 20px; white-space: nowrap; flex-shrink: 0; }
+.stats-row { display: flex; gap: 8px; margin-bottom: 14px; }
+.stat { flex: 1; background: #f0f0ec; border-radius: 9px; padding: 10px; text-align: center; }
+.stat-n { font-size: 22px; font-weight: 500; color: var(--teal); }
+.stat-l { font-size: 11px; color: #999; margin-top: 1px; }
+.photo-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-bottom: 14px; }
+.photo-item { position: relative; aspect-ratio: 1; border-radius: 9px; overflow: hidden; cursor: pointer; }
+.photo-item img { width: 100%; height: 100%; object-fit: cover; }
+.layer-badge { position: absolute; top: 5px; left: 5px; background: rgba(0,0,0,0.6); color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; }
+.items-badge { position: absolute; bottom: 5px; right: 5px; background: rgba(0,0,0,0.55); color: #fff; font-size: 10px; padding: 2px 7px; border-radius: 10px; }
+.chip { display: inline-flex; align-items: center; background: #f5f5f0; border: 0.5px solid var(--border); border-radius: 20px; padding: 4px 10px; font-size: 13px; margin: 3px 4px 3px 0; color: #1a1a18; }
+.fab-bar { background: #f5f5f0; padding: 12px 16px 18px; border-top: 0.5px solid rgba(0,0,0,0.07); }
+.fab { width: 100%; height: 50px; border-radius: 13px; background: var(--teal); border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 9px; color: #fff; font-size: 15px; font-weight: 500; font-family: inherit; }
+.btn-p { background: var(--teal); color: #fff; border: none; border-radius: 10px; padding: 13px 20px; font-size: 15px; font-weight: 500; cursor: pointer; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; font-family: inherit; }
+.btn-p:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-s { background: transparent; color: #1a1a18; border: 0.5px solid rgba(0,0,0,0.2); border-radius: 10px; padding: 12px 20px; font-size: 15px; cursor: pointer; width: 100%; margin-top: 10px; font-family: inherit; }
+.btn-ghost { background: none; border: none; cursor: pointer; color: var(--teal); font-size: 13px; font-weight: 500; font-family: inherit; padding: 0; }
+.input-g { margin-bottom: 14px; }
+.input-lbl { font-size: 13px; color: #666; margin-bottom: 5px; display: block; }
+input[type="text"] { width: 100%; padding: 11px 13px; border: 0.5px solid rgba(0,0,0,0.2); border-radius: 10px; font-size: 15px; background: #fff; color: #1a1a18; font-family: inherit; }
+input[type="text"]:focus { outline: none; border-color: var(--teal); }
+.capture-zone { border: 1.5px dashed rgba(0,0,0,0.16); border-radius: 12px; padding: 2.5rem 1rem; text-align: center; cursor: pointer; background: #f8f8f5; margin-bottom: 12px; }
+.capture-icon { width: 50px; height: 50px; background: var(--teal-l); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 12px; }
+.preview-img { width: 100%; border-radius: 12px; max-height: 240px; object-fit: cover; margin-bottom: 12px; }
+.spinner { width: 30px; height: 30px; border: 2.5px solid var(--teal-l); border-top-color: var(--teal); border-radius: 50%; animation: spin .8s linear infinite; margin: 0 auto 10px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+/* filas editables en detección */
+.det-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); }
+.det-row:last-child { border-bottom: none; }
+.det-chk { width: 17px; height: 17px; accent-color: var(--teal); flex-shrink: 0; cursor: pointer; }
+.det-inp { flex: 1; padding: 7px 10px; border: 0.5px solid rgba(0,0,0,0.15); border-radius: 8px; font-size: 14px; font-family: inherit; background: #fafaf8; color: #1a1a18; }
+.det-inp:focus { outline: none; border-color: var(--teal); background: #fff; }
+.x-btn { background: none; border: none; cursor: pointer; color: #ccc; font-size: 18px; line-height: 1; flex-shrink: 0; padding: 0 2px; }
+.x-btn:hover { color: var(--red); }
+.add-row-btn { display: flex; align-items: center; gap: 6px; background: none; border: 0.5px dashed rgba(0,0,0,0.18); border-radius: 8px; padding: 9px 12px; width: 100%; cursor: pointer; color: var(--teal); font-size: 13px; font-family: inherit; margin-top: 10px; }
+/* filas editables en detalle foto */
+.edit-row { display: flex; align-items: center; gap: 8px; padding: 7px 0; border-bottom: 0.5px solid rgba(0,0,0,0.06); }
+.edit-row:last-child { border-bottom: none; }
+.edit-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--teal); flex-shrink: 0; }
+.edit-inp { flex: 1; border: none; background: transparent; font-size: 14px; font-family: inherit; color: #1a1a18; padding: 3px 6px; border-radius: 6px; }
+.edit-inp:focus { outline: none; background: var(--teal-l); }
+.row-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.photo-big { width: 100%; border-radius: 12px; margin-bottom: 12px; max-height: 300px; object-fit: cover; }
+.tip { background: #fffbe6; border: 0.5px solid #e8cc50; border-radius: 9px; padding: 10px 13px; font-size: 12px; color: #7a6000; line-height: 1.5; margin-bottom: 12px; }
+.modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.42); z-index: 200; align-items: flex-start; justify-content: center; padding-top: 110px; }
+.modal-bg.open { display: flex; }
+.modal-box { background: #fff; border-radius: 14px; padding: 22px 20px 16px; max-width: 300px; width: 90%; text-align: center; }
+.modal-title { font-size: 16px; font-weight: 500; margin-bottom: 8px; }
+.modal-msg { font-size: 13px; color: #666; margin-bottom: 18px; line-height: 1.5; }
+.modal-actions { display: flex; gap: 10px; }
+.modal-cancel { flex:1; padding:11px; border:0.5px solid rgba(0,0,0,0.2); border-radius:10px; background:transparent; font-size:14px; cursor:pointer; font-family:inherit; color:#1a1a18; }
+.modal-ok { flex:1; padding:11px; border:none; border-radius:10px; background:var(--red); color:#fff; font-size:14px; font-weight:500; cursor:pointer; font-family:inherit; }
+.empty { text-align: center; padding: 3rem 1rem; color: #999; }
+.search-bar { background: #fff; border-bottom: 0.5px solid var(--border); padding: 10px 16px; }
+.search-wrap { position: relative; display: flex; align-items: center; }
+.search-wrap svg { position: absolute; left: 11px; pointer-events: none; flex-shrink:0; }
+.search-inp { width: 100%; padding: 10px 12px 10px 36px; border: 0.5px solid rgba(0,0,0,0.18); border-radius: 10px; font-size: 15px; font-family: inherit; background: #f5f5f0; color: #1a1a18; }
+.search-inp:focus { outline: none; border-color: var(--teal); background: #fff; }
+.sr-card { background: #fff; border: 0.5px solid var(--border); border-radius: 12px; padding: 13px 15px; margin-bottom: 9px; cursor: pointer; }
+.sr-card:hover { border-color: rgba(0,0,0,0.2); }
+.sr-item { font-size: 15px; font-weight: 500; margin-bottom: 6px; }
+.sr-item mark { background: var(--teal-l); color: var(--teal-d); border-radius: 3px; padding: 0 3px; font-style: normal; }
+.sr-path { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.sr-box { color: var(--teal-d); font-weight: 500; }
+.sr-loc { color: #999; }
+.sr-capa { display: inline-flex; align-items: center; gap: 3px; background: #f0f0ec; border-radius: 6px; padding: 1px 7px; font-size: 11px; color: #666; margin-top: 5px; }
+.sr-capa-dot { width: 5px; height: 5px; border-radius: 50%; background: #1D9E75; flex-shrink: 0; }
+.hdr-icon { background: none; border: none; cursor: pointer; padding: 4px; color: #888; display: flex; align-items: center; }
+.lang-btn { background: #f0f0ec; border: 0.5px solid rgba(0,0,0,0.15); border-radius: 20px; padding: 4px 10px; font-size: 12px; font-weight: 500; cursor: pointer; color: #1a1a18; font-family: inherit; letter-spacing: .02em; }
+.lang-btn:hover { background: #e8e8e4; }
+.method-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.method-card { border: 0.5px solid rgba(0,0,0,0.15); border-radius: 12px; padding: 18px 12px; text-align: center; cursor: pointer; background: #fff; transition: border-color .15s; }
+.method-card:hover { border-color: #1D9E75; }
+.method-card.solo { grid-column: 1/-1; }
+.method-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 10px; }
+.method-title { font-size: 14px; font-weight: 500; margin-bottom: 3px; color: #1a1a18; }
+.method-desc { font-size: 11px; color: #999; line-height: 1.4; }
+.text-layer-thumb { width: 100%; height: 100%; background: #E1F5EE; display: flex; align-items: center; justify-content: center; }
+textarea.items-ta { width:100%; min-height:180px; padding:11px 13px; border:0.5px solid rgba(0,0,0,0.18); border-radius:10px; font-size:14px; font-family:inherit; color:#1a1a18; background:#fff; resize:vertical; line-height:1.7; }
+textarea.items-ta:focus { outline:none; border-color:#1D9E75; }
+textarea.items-ta::placeholder { color:#bbb; }
+</style>
+</head>
+<body>
+
+<div id="modal" class="modal-bg">
+  <div class="modal-box">
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-msg" id="modal-msg"></div>
+    <div class="modal-actions">
+      <button class="modal-cancel" onclick="closeModal()" data-i18n="cancel">Cancelar</button>
+      <button class="modal-ok" id="modal-ok" data-i18n="delete">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOME -->
+<div id="view-home" class="view active">
+  <div class="hdr">
+    <div class="hdr-title" id="app-title">📦 Mis Cajas</div>
+    <div id="home-badge" style="font-size:12px;color:#999;"></div>
+    <button class="lang-btn" onclick="toggleLang()" id="lang-btn">EN</button>
+    <button class="hdr-icon" onclick="showSearch()" title="Buscar artículo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    </button>
+  </div>
+  <div class="content" id="boxes-list"></div>
+  <div class="fab-bar">
+    <button class="fab" onclick="showNewBox()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Nueva caja
+    </button>
+  </div>
+</div>
+
+<!-- BÚSQUEDA -->
+<div id="view-search" class="view">
+  <div class="hdr">
+    <button class="back-btn" onclick="showHome()" data-i18n="back">← Atrás</button>
+    <div class="hdr-title" data-i18n="search">Buscar artículo</div>
+  </div>
+  <div class="search-bar">
+    <div class="search-wrap">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#aaa" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input class="search-inp" type="text" id="search-inp" data-i18n="searchPh" placeholder="¿Qué estás buscando?" oninput="doSearch(this.value)" autocomplete="off">
+    </div>
+  </div>
+  <div class="content" id="search-results">
+    <div class="empty" style="padding-top:2rem;">
+      <div style="font-size:40px;margin-bottom:12px;opacity:.2;">🔍</div>
+      <div style="font-size:14px;">Escribe el nombre de un artículo para encontrar en qué caja está</div>
+    </div>
+  </div>
+</div>
+
+<!-- NUEVA CAJA -->
+<div id="view-new-box" class="view">
+  <div class="hdr">
+    <button class="back-btn" onclick="showHome()" data-i18n="back">← Atrás</button>
+    <div class="hdr-title" data-i18n="newBoxTitle">Nueva Caja</div>
+  </div>
+  <div class="content">
+    <div class="input-g">
+      <label class="input-lbl" data-i18n="boxName">Nombre de la caja</label>
+      <input type="text" id="new-box-name" data-i18n="boxNamePh" placeholder="ej. Cocina, Libros, Ropa de invierno…">
+    </div>
+    <div class="input-g">
+      <label class="input-lbl" data-i18n="location">Ubicación</label>
+      <input type="text" id="new-box-location" data-i18n="locationPh" placeholder="ej. Bodega, Garaje, Cuarto de servicio…">
+    </div>
+    <button class="btn-p" onclick="createBox()" data-i18n="createBox">Crear caja</button>
+  </div>
+</div>
+
+<!-- DETALLE CAJA -->
+<div id="view-box" class="view">
+  <div class="hdr">
+    <button class="back-btn" onclick="showHome()" data-i18n="back">← Atrás</button>
+    <div class="hdr-title" id="box-title">Caja</div>
+    <button class="del-hdr-btn" onclick="deleteCurrentBox()" data-i18n="delete">Eliminar</button>
+  </div>
+  <div class="content">
+    <div class="stats-row" id="box-stats"></div>
+    <div id="box-items-wrap"></div>
+    <div class="row-hdr">
+      <span class="sec-label" style="margin:0;" id="capas-label">Capas</span>
+      <button class="btn-ghost" onclick="showAddPhoto()" id="add-layer-btn">+ Añadir capa</button>
+    </div>
+    <div class="photo-grid" id="box-photos"></div>
+    <div id="box-empty" style="display:none;">
+      <div class="empty">
+        <div style="font-size:44px;margin-bottom:12px;opacity:.2;">📦</div>
+        <div style="font-size:15px;font-weight:500;margin-bottom:8px;" data-i18n="noLayers">Sin capas todavía</div>
+        <div style="font-size:13px;" data-i18n="noLayersDesc">Añade una caja con foto para que la IA identifique los artículos, o escríbelos directamente con texto.</div>
+      </div>
+      <button class="btn-p" onclick="showAddPhoto()" style="margin-top:6px;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Añadir primera capa
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- AÑADIR CAPA -->
+<div id="view-add-photo" class="view">
+  <div class="hdr">
+    <button class="back-btn" onclick="showBox(currentBoxId)" data-i18n="back">← Atrás</button>
+    <div class="hdr-title" id="add-photo-title">Añadir capa</div>
+  </div>
+  <div class="content">
+
+    <!-- PASO 0: elegir método -->
+    <div id="step-method">
+      <div class="method-grid">
+        <div class="method-card" onclick="choosePhoto()">
+          <div class="method-icon" style="background:#E1F5EE;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M9 2h6l2 3H4L6 2z"/><rect x="2" y="6" width="20" height="15" rx="2"/></svg>
+          </div>
+          <div class="method-title" data-i18n="methodPhotoTitle">Con foto + IA</div>
+          <div class="method-desc" data-i18n="methodPhotoDesc">Fotografía los artículos y la IA los identifica automáticamente</div>
+        </div>
+        <div class="method-card" onclick="chooseText()">
+          <div class="method-icon" style="background:#f0f0ec;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>
+          </div>
+          <div class="method-title" data-i18n="methodTextTitle">Solo texto</div>
+          <div class="method-desc" data-i18n="methodTextDesc">Escribe los artículos manualmente, sin foto</div>
+        </div>
+      </div>
+      <div class="tip" style="margin-top:2px;"><span data-i18n="tip">💡 También puedes combinar: toma la foto, la IA identifica todo, y luego añades o corriges artículos a mano.</span></div>
+    </div>
+
+    <!-- PASO 1: captura (foto) -->
+    <div id="step-capture" style="display:none;">
+      <div class="tip"><span data-i18n="tipPhoto">💡 Iluminación cenital y buena luz mejoran mucho la identificación.</span></div>
+      <div class="capture-zone" onclick="document.getElementById('file-input').click()">
+        <div class="capture-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M9 2h6l2 3H4L6 2z"/><rect x="2" y="6" width="20" height="15" rx="2"/></svg>
+        </div>
+        <div style="font-weight:500;font-size:15px;margin-bottom:5px;" data-i18n="tapToPhoto">Toca para fotografiar</div>
+        <div style="font-size:13px;color:#888;" data-i18n="orGallery">O elige desde tu galería</div>
+        <input type="file" id="file-input" accept="image/*" capture="environment" style="display:none;" onchange="handlePhoto(event)">
+      </div>
+      <button class="btn-s" onclick="chooseText()" data-i18n="continueNoPhoto">Continuar sin foto →</button>
+    </div>
+
+    <!-- PASO 2: resultados (con o sin foto) -->
+    <div id="step-results" style="display:none;">
+      <img id="preview-img" class="preview-img" style="display:none;">
+      <div id="loading-card" class="card" style="text-align:center;padding:2rem 1rem;">
+        <div class="spinner"></div>
+        <div style="font-size:14px;font-weight:500;margin-bottom:4px;" data-i18n="analyzing">Analizando imagen…</div>
+        <div style="font-size:12px;color:#888;" data-i18n="analyzingDesc">La IA está identificando cada artículo</div>
+      </div>
+
+      <!-- modo foto: lista con checkboxes editables -->
+      <div id="results-card" style="display:none;">
+        <div class="card" style="margin-bottom:10px;">
+          <div class="sec-label" data-i18n="detectedItems">Artículos detectados</div>
+          <div style="font-size:12px;color:#999;margin-bottom:10px;" id="results-hint">Edita el texto, desmarca los que no quieras o añade los que falten</div>
+          <div id="detected-list"></div>
+          <button class="add-row-btn" onclick="addDetectedItem()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Añadir artículo
+          </button>
+        </div>
+        <button class="btn-p" onclick="saveLayer()" data-i18n="saveBox">Guardar en la caja</button>
+        <button class="btn-s" id="retake-btn" onclick="retake()" data-i18n="retakePhoto">Tomar otra foto</button>
+      </div>
+
+      <!-- modo texto: campo libre, un artículo por línea -->
+      <div id="text-card" style="display:none;">
+        <div class="card" style="margin-bottom:10px;">
+          <div class="sec-label" data-i18n="textItems">Artículos</div>
+          <div style="font-size:12px;color:#999;margin-bottom:10px;" data-i18n="textItemsDesc">Un artículo por línea. Sé específico: color, material, cantidad.</div>
+          <textarea class="items-ta" id="text-items" placeholder="Ej:
+Sartén antiadherente negra
+Tazas de cerámica blanca (4)
+Tabla de cortar de madera
+Colador de acero inoxidable"></textarea>
+        </div>
+        <button class="btn-p" onclick="saveLayer()" data-i18n="saveBox2">Guardar en la caja</button>
+        <button class="btn-s" onclick="retake()" data-i18n="goBack">← Volver</button>
+      </div>
+
+      <div id="error-card" style="display:none;">
+        <div class="card" style="color:#993C1D;font-size:14px;line-height:1.5;" data-i18n="errorPhoto">No se pudo analizar la imagen. Intenta con más luz o mejor enfoque.</div>
+        <button class="btn-s" onclick="retake()" data-i18n="tryAgain">Intentar de nuevo</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- DETALLE FOTO (editable) -->
+<div id="view-photo" class="view">
+  <div class="hdr">
+    <button class="back-btn" onclick="showBox(currentBoxId)" data-i18n="back">← Atrás</button>
+    <div class="hdr-title" id="photo-title">Capa</div>
+    <button class="del-hdr-btn" onclick="deletePhoto()" data-i18n="delete">Eliminar</button>
+  </div>
+  <div class="content">
+    <img id="photo-big" class="photo-big" style="display:none;">
+    <div class="card">
+      <div class="row-hdr" style="margin-bottom:8px;">
+        <span class="sec-label" style="margin:0;" data-i18n="itemsInLayer">Artículos en esta capa</span>
+        <button class="btn-ghost" onclick="addPhotoItem()" data-i18n="addItemBtn">+ Añadir</button>
+      </div>
+      <div id="photo-items-edit"></div>
+    </div>
+    <button class="btn-p" id="save-photo-btn" onclick="savePhotoEdits()" data-i18n="saveChanges">Guardar cambios</button>
+  </div>
+</div>
+
+<script>
+let state = { boxes: [] };
+let currentBoxId = null;
+let currentPhotoData = null;
+let currentPhotoId = null;
+let detectedItems = [];
+let lang = 'es';
+
+const i18n = {
+  es: {
+    appTitle: '📦 Mis Cajas',
+    newBox: 'Nueva caja',
+    noBoxes: 'Sin cajas todavía',
+    noBoxesDesc: 'Toca <strong>Nueva caja</strong> para empezar',
+    items: 'artículos',
+    newBoxTitle: 'Nueva Caja',
+    back: '← Atrás',
+    delete: 'Eliminar',
+    boxName: 'Nombre de la caja',
+    boxNamePh: 'ej. Cocina, Libros, Ropa de invierno…',
+    location: 'Ubicación',
+    locationPh: 'ej. Bodega, Garaje, Cuarto de servicio…',
+    createBox: 'Crear caja',
+    layers: 'Capas',
+    layersTxt: 'Capas de texto',
+    layersMix: 'Capas (foto + texto)',
+    withPhoto: 'Con foto',
+    type: 'Tipo',
+    allItems: 'Todos los artículos en esta caja',
+    addLayer: '+ Añadir capa',
+    noLayers: 'Sin capas todavía',
+    noLayersDesc: 'Añade una capa con foto para que la IA identifique los artículos, o escríbelos directamente con texto.',
+    addFirstLayer: 'Añadir primera capa',
+    addLayerTitle: 'Añadir capa',
+    methodPhotoTitle: 'Con foto + IA',
+    methodPhotoDesc: 'Fotografía los artículos y la IA los identifica automáticamente',
+    methodTextTitle: 'Solo texto',
+    methodTextDesc: 'Escribe los artículos manualmente, sin foto',
+    tip: '💡 También puedes combinar: toma la foto, la IA identifica todo, y luego añades o corriges artículos a mano.',
+    tipPhoto: '💡 Iluminación cenital y buena luz mejoran mucho la identificación.',
+    tapToPhoto: 'Toca para fotografiar',
+    orGallery: 'O elige desde tu galería',
+    continueNoPhoto: 'Continuar sin foto →',
+    analyzing: 'Analizando imagen…',
+    analyzingDesc: 'La IA está identificando cada artículo',
+    detectedItems: 'Artículos detectados',
+    detectedHint: 'Edita el texto, desmarca los que no quieras o añade los que falten',
+    addItem: 'Añadir artículo',
+    saveBox: 'Guardar en la caja',
+    retakePhoto: 'Tomar otra foto',
+    errorPhoto: 'No se pudo analizar la imagen. Intenta con más luz o mejor enfoque.',
+    tryAgain: 'Intentar de nuevo',
+    textItems: 'Artículos',
+    textItemsDesc: 'Un artículo por línea. Sé específico: color, material, cantidad.',
+    textPlaceholder: 'Ej:\nSart\u00e9n antiadherente negra\nTazas de cer\u00e1mica blanca (4)\nTabla de cortar de madera',
+    saveBox2: 'Guardar en la caja',
+    goBack: '← Volver',
+    itemsInLayer: 'Artículos en esta capa',
+    addItemBtn: '+ Añadir',
+    tapToEdit: 'Toca cualquier artículo para editar su nombre',
+    saveChanges: 'Guardar cambios',
+    search: 'Buscar artículo',
+    searchPh: '¿Qué estás buscando?',
+    searchHint: 'Escribe el nombre de un artículo para encontrar en qué caja está',
+    searchMin: 'Escribe al menos 2 caracteres para buscar',
+    noResults: 'Sin resultados',
+    noResultsDesc: 'No encontré',
+    noResultsIn: 'en ninguna caja',
+    result: 'resultado',
+    results: 'resultados',
+    capaOf: 'Capa',
+    of: 'de',
+    withPhotoTag: 'con foto',
+    textTag: 'texto',
+    deleteBox: 'Eliminar caja',
+    deleteBoxMsg: '¿Eliminar "{name}"? Se perderán todas sus fotos y artículos.',
+    deleteLayer: 'Eliminar capa',
+    deleteLayerMsg: '¿Eliminar esta foto y sus artículos?',
+    cancel: 'Cancelar',
+    layerText: '· texto',
+    art: 'art.',
+    photos: 'foto',
+    photosPlural: 'fotos',
+    capas: 'capa',
+    capasPlural: 'capas',
+    sinCapas: 'Sin capas',
+  },
+  en: {
+    appTitle: '📦 My Boxes',
+    newBox: 'New box',
+    noBoxes: 'No boxes yet',
+    noBoxesDesc: 'Tap <strong>New box</strong> to get started',
+    items: 'items',
+    newBoxTitle: 'New Box',
+    back: '← Back',
+    delete: 'Delete',
+    boxName: 'Box name',
+    boxNamePh: 'e.g. Kitchen, Books, Winter clothes…',
+    location: 'Location',
+    locationPh: 'e.g. Storage room, Garage, Basement…',
+    createBox: 'Create box',
+    layers: 'Layers',
+    layersTxt: 'Text layers',
+    layersMix: 'Layers (photo + text)',
+    withPhoto: 'With photo',
+    type: 'Type',
+    allItems: 'All items in this box',
+    addLayer: '+ Add layer',
+    noLayers: 'No layers yet',
+    noLayersDesc: 'Add a layer with photo so AI identifies items, or write them directly as text.',
+    addFirstLayer: 'Add first layer',
+    addLayerTitle: 'Add layer',
+    methodPhotoTitle: 'Photo + AI',
+    methodPhotoDesc: 'Photograph the items and AI identifies them automatically',
+    methodTextTitle: 'Text only',
+    methodTextDesc: 'Write items manually, no photo needed',
+    tip: '💡 You can also combine: take the photo, AI identifies everything, then add or correct items manually.',
+    tipPhoto: '💡 Overhead angle and good lighting greatly improve identification.',
+    tapToPhoto: 'Tap to photograph',
+    orGallery: 'Or choose from your gallery',
+    continueNoPhoto: 'Continue without photo →',
+    analyzing: 'Analyzing image…',
+    analyzingDesc: 'AI is identifying each item',
+    detectedItems: 'Detected items',
+    detectedHint: "Edit text, uncheck items you don't want or add missing ones",
+    addItem: 'Add item',
+    saveBox: 'Save to box',
+    retakePhoto: 'Take another photo',
+    errorPhoto: 'Could not analyze the image. Try with better lighting or focus.',
+    tryAgain: 'Try again',
+    textItems: 'Items',
+    textItemsDesc: 'One item per line. Be specific: color, material, quantity.',
+    textPlaceholder: 'e.g.\nBlack non-stick pan\nWhite ceramic mugs (4)\nWooden cutting board',
+    saveBox2: 'Save to box',
+    goBack: '← Back',
+    itemsInLayer: 'Items in this layer',
+    addItemBtn: '+ Add',
+    tapToEdit: 'Tap any item to edit its name',
+    saveChanges: 'Save changes',
+    search: 'Search item',
+    searchPh: 'What are you looking for?',
+    searchHint: "Type an item name to find which box it's in",
+    searchMin: 'Type at least 2 characters to search',
+    noResults: 'No results',
+    noResultsDesc: 'Could not find',
+    noResultsIn: 'in any box',
+    result: 'result',
+    results: 'results',
+    capaOf: 'Layer',
+    of: 'of',
+    withPhotoTag: 'with photo',
+    textTag: 'text',
+    deleteBox: 'Delete box',
+    deleteBoxMsg: "Delete \"{name}\"? All photos and items will be lost.",
+    deleteLayer: 'Delete layer',
+    deleteLayerMsg: 'Delete this layer and its items?',
+    cancel: 'Cancel',
+    layerText: '· text',
+    art: 'items',
+    photos: 'photo',
+    photosPlural: 'photos',
+    capas: 'layer',
+    capasPlural: 'layers',
+    sinCapas: 'No layers',
+  }
+};
+
+function t(key) { return i18n[lang][key] || i18n['es'][key] || key; }
+
+function toggleLang() {
+  lang = lang === 'es' ? 'en' : 'es';
+  document.getElementById('lang-btn').textContent = lang === 'es' ? 'EN' : 'ES';
+  document.documentElement.lang = lang;
+  applyLang();
+  // re-render current view
+  const active = document.querySelector('.view.active');
+  if (active) {
+    const id = active.id.replace('view-', '');
+    if (id === 'home') renderHome();
+    else if (id === 'box') renderBox();
+    else if (id === 'search') showSearch();
+  }
+}
+
+function applyLang() {
+  // All elements with data-i18n
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.placeholder = t(key);
+    else el.innerHTML = t(key);
+  });
+  // App title
+  const appTitle = document.getElementById('app-title');
+  if (appTitle) appTitle.textContent = t('appTitle');
+  // Add layer button (not data-i18n because content is dynamic but label is static)
+  const addLayerBtn = document.getElementById('add-layer-btn');
+  if (addLayerBtn) addLayerBtn.textContent = t('addLayer');
+  // Save photo button
+  const savePhotoBtn = document.getElementById('save-photo-btn');
+  if (savePhotoBtn && savePhotoBtn.textContent !== '✓ '+t('saveChanges')) savePhotoBtn.textContent = t('saveChanges');
+  // Textarea placeholder
+  const ta = document.getElementById('text-items');
+  if (ta) ta.placeholder = t('textPlaceholder');
+  // Search input placeholder
+  const si = document.getElementById('search-inp');
+  if (si) si.placeholder = t('searchPh');
+}
+
+async function loadState() {
+  try { const r = await window.storage.get('cajas_v2'); if (r?.value) state = JSON.parse(r.value); } catch(e) {}
+  applyLang();
+  renderHome();
+}
+async function saveState() {
+  try { await window.storage.set('cajas_v2', JSON.stringify(state)); } catch(e) {}
+}
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,6);
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+function setView(name) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-'+name).classList.add('active');
+}
+
+/* modal */
+function showModal(title, msg, onOk) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-msg').textContent = msg;
+  document.getElementById('modal-ok').onclick = () => { closeModal(); onOk(); };
+  document.getElementById('modal').classList.add('open');
+}
+function closeModal() { document.getElementById('modal').classList.remove('open'); }
+
+/* home */
+function showHome() { setView('home'); renderHome(); }
+function renderHome() {
+  const list = document.getElementById('boxes-list');
+  const total = state.boxes.reduce((s,b) => s + b.allItems.length, 0);
+  document.getElementById('home-badge').textContent = total ? total+' '+t('items') : '';
+  if (!state.boxes.length) {
+    list.innerHTML = `<div class="empty" style="padding-top:2.5rem;">
+      <div style="font-size:50px;margin-bottom:14px;opacity:.18;">📦</div>
+      <div style="font-size:16px;font-weight:500;margin-bottom:8px;">${t('noBoxes')}</div>
+      <div style="font-size:13px;">${t('noBoxesDesc')}</div>
+    </div>`;
+    return;
+  }
+  list.innerHTML = state.boxes.map(b => {
+    const firstPhoto = b.photos.find(p => p.dataUrl);
+    const thumb = firstPhoto ? `<img class="box-thumb" src="${firstPhoto.dataUrl}">` : `<div class="box-thumb-e">📦</div>`;
+    const nCapas = b.photos.length;
+    const nFotos = b.photos.filter(p => p.dataUrl).length;
+    const capaStr = nCapas === 0 ? t('sinCapas') : nCapas + ' ' + (nCapas !== 1 ? t('capasPlural') : t('capas'));
+    const fotoStr = nFotos > 0 ? nFotos + ' ' + (nFotos !== 1 ? t('photosPlural') : t('photos')) : '';
+    const meta = [b.location, capaStr, fotoStr].filter(Boolean).join(' · ');
+    return `<div class="box-card" onclick="showBox('${b.id}')">
+      ${thumb}
+      <div style="flex:1;min-width:0;"><div class="box-name">${esc(b.name)}</div><div class="box-meta">${esc(meta)}</div></div>
+      ${b.allItems.length ? `<span class="box-count">${b.allItems.length} ${t('art')}</span>` : ''}
+    </div>`;
+  }).join('');
+}
+
+/* nueva caja */
+function showNewBox() {
+  setView('new-box');
+  document.getElementById('new-box-name').value = '';
+  document.getElementById('new-box-location').value = '';
+  setTimeout(() => document.getElementById('new-box-name').focus(), 80);
+}
+function createBox() {
+  const name = document.getElementById('new-box-name').value.trim();
+  if (!name) { document.getElementById('new-box-name').focus(); return; }
+  const loc = document.getElementById('new-box-location').value.trim();
+  const box = { id: uid(), name, location: loc, photos: [], allItems: [] };
+  state.boxes.unshift(box);
+  saveState();
+  showBox(box.id);
+}
+
+/* detalle caja */
+function showBox(id) { currentBoxId = id; setView('box'); renderBox(); }
+function renderBox() {
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  if (!box) { showHome(); return; }
+  document.getElementById('box-title').textContent = box.name;
+  const nFotosBox = box.photos.filter(p => p.dataUrl).length;
+  const nTextoBox = box.photos.filter(p => !p.dataUrl).length;
+  let statsHtml = `<div class="stat"><div class="stat-n">${box.photos.length}</div><div class="stat-l">${t('layers')}</div></div>`;
+  statsHtml += `<div class="stat"><div class="stat-n">${box.allItems.length}</div><div class="stat-l">${t('items')}</div></div>`;
+  if (nFotosBox > 0 && nTextoBox > 0) {
+    statsHtml += `<div class="stat"><div class="stat-n" style="font-size:13px;">${nFotosBox}📷 ${nTextoBox}✏️</div><div class="stat-l">${t('type')}</div></div>`;
+  } else if (nFotosBox > 0) {
+    statsHtml += `<div class="stat"><div class="stat-n">${nFotosBox}</div><div class="stat-l">${t('withPhoto')}</div></div>`;
+  }
+  if (box.location) {
+    statsHtml += `<div class="stat" style="flex:1.4;"><div style="font-size:12px;font-weight:500;color:var(--teal);margin-top:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(box.location)}</div><div class="stat-l">Ubicación</div></div>`;
+  }
+  document.getElementById('box-stats').innerHTML = statsHtml;
+  const capasLbl = document.getElementById('capas-label');
+  if (capasLbl) capasLbl.textContent = nFotosBox > 0 ? t('layersMix') : nTextoBox > 0 ? t('layersTxt') : t('layers');
+  const wrap = document.getElementById('box-items-wrap');
+  wrap.innerHTML = box.allItems.length ? `<div class="card" style="margin-bottom:12px;">
+    <div class="sec-label">${t('allItems')}</div>
+    ${box.allItems.map(i => `<span class="chip">${esc(i)}</span>`).join('')}
+  </div>` : '';
+  const grid = document.getElementById('box-photos');
+  const empty = document.getElementById('box-empty');
+  if (!box.photos.length) { grid.style.display='none'; empty.style.display='block'; }
+  else {
+    empty.style.display='none'; grid.style.display='grid';
+    grid.innerHTML = box.photos.map((p,i) => {
+      let inner;
+      if (p.dataUrl) {
+        inner = `<img src="${p.dataUrl}" style="width:100%;height:100%;object-fit:cover;">`;
+      } else {
+        const preview = p.items.slice(0, 4).map(it =>
+          `<div style="font-size:8px;color:#0F6E56;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;">${esc(it)}</div>`
+        ).join('');
+        const more = p.items.length > 4 ? `<div style="font-size:7px;color:#aaa;margin-top:1px;">+${p.items.length-4} más</div>` : '';
+        inner = `<div style="width:100%;height:100%;background:#f5f5f0;padding:8px 7px;display:flex;flex-direction:column;justify-content:center;gap:2px;overflow:hidden;">${preview}${more}</div>`;
+      }
+      return `<div class="photo-item" onclick="showPhotoDetail('${p.id}')">
+        ${inner}
+        <div class="layer-badge">${t('capaOf')} ${i+1}</div>
+        <div class="items-badge">${p.items.length} ${t('art')}</div>
+      </div>`;
+    }).join('');
+  }
+}
+function deleteCurrentBox() {
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  showModal(t('deleteBox'), t('deleteBoxMsg').replace('{name}', box?.name || ''), () => {
+    state.boxes = state.boxes.filter(b => b.id !== currentBoxId);
+    saveState(); showHome();
+  });
+}
+function rebuildItems(box) {
+  const all = new Set();
+  box.photos.forEach(p => p.items.forEach(i => { if(i.trim()) all.add(i.trim()); }));
+  box.allItems = Array.from(all);
+}
+
+/* detalle foto — editable */
+function showPhotoDetail(photoId) {
+  currentPhotoId = photoId;
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  const photo = box?.photos.find(p => p.id === photoId);
+  if (!photo) return;
+  const idx = box.photos.indexOf(photo);
+  const typeLabel = photo.dataUrl ? '' : ' '+t('layerText');
+  document.getElementById('photo-title').textContent = 'Capa ' + (idx+1) + typeLabel;
+  const bigEl = document.getElementById('photo-big');
+  if (photo.dataUrl) {
+    bigEl.src = photo.dataUrl;
+    bigEl.style.display = 'block';
+  } else {
+    bigEl.style.display = 'none';
+  }
+  renderPhotoItems(photo.items);
+  document.getElementById('save-photo-btn').textContent = t('saveChanges');
+  document.getElementById('save-photo-btn').disabled = false;
+  setView('photo');
+}
+function renderPhotoItems(items) {
+  const el = document.getElementById('photo-items-edit');
+  if (!items.length) {
+    el.innerHTML = `<div style="color:#bbb;font-size:13px;padding:4px 0;">${lang==='en'?'No items. Tap + Add.':'Sin artículos. Toca + Añadir.'}</div>`;
+    return;
+  }
+  el.innerHTML = items.map((item,i) => `
+    <div class="edit-row">
+      <div class="edit-dot"></div>
+      <input class="edit-inp" type="text" value="${esc(item)}" placeholder="Nombre del artículo" id="ei_${i}">
+      <button class="x-btn" onclick="removePhotoItem(${i})">×</button>
+    </div>`).join('');
+}
+function addPhotoItem() {
+  const photo = getCurrentPhoto(); if (!photo) return;
+  photo.items.push('');
+  renderPhotoItems(photo.items);
+  const all = document.querySelectorAll('.edit-inp');
+  all[all.length-1]?.focus();
+}
+function removePhotoItem(i) {
+  const photo = getCurrentPhoto(); if (!photo) return;
+  photo.items.splice(i,1);
+  renderPhotoItems(photo.items);
+}
+async function savePhotoEdits() {
+  const photo = getCurrentPhoto(); if (!photo) return;
+  photo.items = Array.from(document.querySelectorAll('.edit-inp')).map(i=>i.value.trim()).filter(Boolean);
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  rebuildItems(box);
+  await saveState();
+  const btn = document.getElementById('save-photo-btn');
+  btn.textContent = '✓ '+t('saveChanges'); btn.disabled = true;
+  setTimeout(() => showBox(currentBoxId), 800);
+}
+function getCurrentPhoto() {
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  return box?.photos.find(p => p.id === currentPhotoId) || null;
+}
+function deletePhoto() {
+  showModal(t('deleteLayer'), t('deleteLayerMsg'), () => {
+    const box = state.boxes.find(b => b.id === currentBoxId); if (!box) return;
+    box.photos = box.photos.filter(p => p.id !== currentPhotoId);
+    rebuildItems(box); saveState(); showBox(currentBoxId);
+  });
+}
+
+/* captura */
+function showAddPhoto() {
+  setView('add-photo');
+  currentPhotoData = null; detectedItems = [];
+  document.getElementById('step-method').style.display = 'block';
+  document.getElementById('step-capture').style.display = 'none';
+  document.getElementById('step-results').style.display = 'none';
+  document.getElementById('file-input').value = '';
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  document.getElementById('add-photo-title').textContent = t('addLayerTitle')+' '+((box?.photos.length||0)+1);
+}
+function choosePhoto() {
+  document.getElementById('step-method').style.display = 'none';
+  document.getElementById('step-capture').style.display = 'block';
+}
+function chooseText() {
+  currentPhotoData = null;
+  document.getElementById('step-method').style.display = 'none';
+  document.getElementById('step-capture').style.display = 'none';
+  document.getElementById('step-results').style.display = 'block';
+  document.getElementById('preview-img').style.display = 'none';
+  document.getElementById('loading-card').style.display = 'none';
+  document.getElementById('results-card').style.display = 'none';
+  document.getElementById('error-card').style.display = 'none';
+  document.getElementById('text-card').style.display = 'block';
+  document.getElementById('text-items').value = '';
+  setTimeout(() => document.getElementById('text-items').focus(), 80);
+}
+function retake() {
+  document.getElementById('step-method').style.display = 'block';
+  document.getElementById('step-capture').style.display = 'none';
+  document.getElementById('step-results').style.display = 'none';
+  document.getElementById('text-card').style.display = 'none';
+  document.getElementById('file-input').value = '';
+  currentPhotoData = null; detectedItems = [];
+}
+
+/* comprimir antes de enviar a la API */
+function compressImage(dataUrl, maxW=800, q=0.72) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, maxW/Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+      resolve(c.toDataURL('image/jpeg', q));
+    };
+    img.src = dataUrl;
+  });
+}
+
+async function handlePhoto(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const original = ev.target.result;
+    currentPhotoData = original;
+    document.getElementById('step-method').style.display = 'none';
+    document.getElementById('step-capture').style.display = 'none';
+    document.getElementById('step-results').style.display = 'block';
+    const pi = document.getElementById('preview-img');
+    pi.src = original; pi.style.display = 'block';
+    document.getElementById('loading-card').style.display = 'block';
+    document.getElementById('results-card').style.display = 'none';
+    document.getElementById('error-card').style.display = 'none';
+    document.getElementById('retake-btn').style.display = 'block';
+    document.getElementById('results-label').textContent = 'Artículos detectados';
+    document.getElementById('results-hint').textContent = 'Edita el texto, desmarca los que no quieras o añade los que falten';
+    try {
+      const compressed = await compressImage(original);
+      const items = await identifyItems(compressed);
+      renderResults(items);
+    } catch(err) {
+      document.getElementById('loading-card').style.display = 'none';
+      document.getElementById('error-card').style.display = 'block';
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+/* IA — prompt mejorado con contexto de caja */
+async function identifyItems(dataUrl) {
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  const [header, b64] = dataUrl.split(',');
+  const mt = header.match(/:(.*?);/)[1];
+
+  const isEn = lang === 'en';
+  const ctx = box ? (isEn ? `The box is called "${box.name}"${box.location ? ` and is located in "${box.location}"` : ''}. Use this context to better interpret the objects.` : `La caja se llama "${box.name}"${box.location ? ` y está en "${box.location}"` : ''}. Usa ese contexto para interpretar mejor los objetos.`) : '';
+
+  const prompt = isEn ? `You are a home inventory expert. Analyze this photo of items that will be stored in a box.
+
+${ctx}
+
+STRICT RULES:
+1. Identify each object or group as ONE entry — never repeat the same type of item
+2. If identical items exist, group them: "White cotton socks (6 pairs)" not listed individually
+3. If a multipack or set exists, describe as a unit: "Sports socks pack (12 pairs)"
+4. Be specific and descriptive: color, material or key feature that helps identify it later
+5. Do not include the box, background, floor, table or surfaces
+6. Maximum 20 entries, from most to least prominent
+7. NEVER duplicate items of the same type — combine them: "Cotton t-shirts in various colors (5)"
+
+Respond ONLY with a JSON array of strings in English. No markdown, no explanations.
+Example: ["Black non-stick pan","Blue denim jacket","Cookbook","USB-C cable (3)","White ceramic mug"]` : `Eres un experto en inventario doméstico. Analiza esta foto de objetos que serán guardados en una caja de almacenamiento.
+
+${ctx}
+
+REGLAS ESTRICTAS:
+1. Identifica cada objeto o grupo de objetos visible como UNA SOLA entrada — nunca repitas el mismo tipo de artículo
+2. Si hay artículos idénticos o muy similares, agrúpalos en una entrada con cantidad: "Calcetines blancos de algodón (6 pares)", NO los listes uno por uno
+3. Si hay un paquete o set (multipack de calcetines, juego de platos, pack de toallas), descríbelo como unidad: "Pack de calcetines deportivos (12 pares)"
+4. Sé específico y descriptivo: color, material o característica que ayude a identificarlo luego
+5. No incluyas la caja, el fondo, el piso, la mesa ni superficies
+6. Máximo 20 entradas, de mayor a menor prominencia en la imagen
+7. NUNCA dupliques artículos del mismo tipo aunque sean de colores distintos — combínalos: "Camisetas de algodón en varios colores (5)"
+
+Responde ÚNICAMENTE con un JSON array de strings en español. Sin markdown, sin explicaciones.
+Ejemplo: ["Pack de calcetines deportivos blancos (12 pares)","Suéter rojo de lana","Pantalón de mezclilla azul","Juego de tazas de cerámica (4)","Cable HDMI negro"]`;
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: mt, data: b64 } },
+        { type: 'text', text: prompt }
+      ]}]
+    })
+  });
+  if (!res.ok) throw new Error('API '+res.status);
+  const data = await res.json();
+  const text = data.content.map(c=>c.text||'').join('').trim().replace(/```json|```/g,'').trim();
+  const parsed = JSON.parse(text);
+  return Array.isArray(parsed) ? parsed : [];
+}
+
+/* resultados detectados — editables */
+function renderResults(items) {
+  document.getElementById('loading-card').style.display = 'none';
+  document.getElementById('results-card').style.display = 'block';
+  detectedItems = [...items];
+  renderDetectedList();
+}
+function renderDetectedList() {
+  const list = document.getElementById('detected-list');
+  if (!detectedItems.length) {
+    list.innerHTML = '<div style="color:#999;font-size:13px;padding:6px 0;">No se detectaron artículos. Añade manualmente o toma otra foto con más luz.</div>';
+    return;
+  }
+  list.innerHTML = detectedItems.map((item,i) => `
+    <div class="det-row">
+      <input type="checkbox" class="det-chk" id="chk_${i}" checked>
+      <input class="det-inp" type="text" id="dtxt_${i}" value="${esc(item)}" placeholder="Nombre del artículo">
+      <button class="x-btn" onclick="removeDetected(${i})">×</button>
+    </div>`).join('');
+}
+function syncDetected() {
+  document.querySelectorAll('.det-inp').forEach((inp, i) => {
+    if (i < detectedItems.length) detectedItems[i] = inp.value;
+  });
+}
+function removeDetected(i) {
+  syncDetected();
+  detectedItems.splice(i, 1);
+  renderDetectedList();
+}
+function addDetectedItem() {
+  syncDetected();
+  detectedItems.push('');
+  renderDetectedList();
+  const all = document.querySelectorAll('.det-inp');
+  all[all.length-1]?.focus();
+}
+async function saveLayer() {
+  const box = state.boxes.find(b => b.id === currentBoxId);
+  if (!box) return;
+  let selected = [];
+  const textCard = document.getElementById('text-card');
+  const isTextMode = textCard && textCard.style.display !== 'none';
+
+  if (isTextMode) {
+    // text-only mode: split textarea by newlines
+    const raw = document.getElementById('text-items').value;
+    selected = raw.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!selected.length) {
+      const ta = document.getElementById('text-items');
+      ta.style.borderColor = '#E24B4A';
+      ta.placeholder = 'Escribe al menos un artículo antes de guardar';
+      setTimeout(() => { ta.style.borderColor = ''; }, 2000);
+      return;
+    }
+  } else {
+    // photo mode: read from checkbox rows
+    document.querySelectorAll('.det-row').forEach(row => {
+      const chk = row.querySelector('.det-chk');
+      const txt = row.querySelector('.det-inp');
+      if (chk?.checked && txt?.value.trim()) selected.push(txt.value.trim());
+    });
+    if (!selected.length) {
+      const hint = document.getElementById('results-hint');
+      hint.textContent = '⚠️ Añade al menos un artículo antes de guardar.';
+      hint.style.color = '#993C1D';
+      setTimeout(() => { hint.style.color = ''; hint.textContent = 'Edita el texto, desmarca los que no quieras o añade los que falten'; }, 2500);
+      return;
+    }
+  }
+  box.photos.push({ id: uid(), dataUrl: currentPhotoData || null, items: selected });
+  rebuildItems(box);
+  await saveState();
+  showBox(currentBoxId);
+}
+
+/* búsqueda */
+function showSearch() {
+  setView('search');
+  const inp = document.getElementById('search-inp');
+  inp.value = '';
+  document.getElementById('search-results').innerHTML = `<div class="empty" style="padding-top:2rem;">
+    <div style="font-size:40px;margin-bottom:12px;opacity:.2;">🔍</div>
+    <div style="font-size:14px;">${t('searchHint')}</div>
+  </div>`;
+  setTimeout(() => inp.focus(), 80);
+}
+
+function highlight(text, query) {
+  if (!query) return esc(text);
+  const safe = esc(text);
+  const lo = safe.toLowerCase();
+  const lq = query.toLowerCase();
+  const i = lo.indexOf(lq);
+  if (i === -1) return safe;
+  return safe.slice(0, i) + '<mark>' + safe.slice(i, i + query.length) + '</mark>' + safe.slice(i + query.length);
+}
+
+function doSearch(q) {
+  const res = document.getElementById('search-results');
+  q = q.trim();
+  if (q.length < 2) {
+    res.innerHTML = `<div class="empty" style="padding-top:2rem;">
+      <div style="font-size:40px;margin-bottom:12px;opacity:.2;">🔍</div>
+      <div style="font-size:14px;">${t('searchMin')}</div>
+    </div>`;
+    return;
+  }
+  const lower = q.toLowerCase();
+  const matches = [];
+  state.boxes.forEach(box => {
+    box.photos.forEach((photo, layerIdx) => {
+      photo.items.forEach(item => {
+        if (item.toLowerCase().includes(lower)) {
+          const hasPhoto = !!photo.dataUrl;
+          matches.push({
+            item,
+            boxId: box.id,
+            boxName: box.name,
+            location: box.location,
+            layerNum: layerIdx + 1,
+            layerTotal: box.photos.length,
+            hasPhoto,
+            photoId: photo.id
+          });
+        }
+      });
+    });
+  });
+  if (!matches.length) {
+    res.innerHTML = `<div class="empty" style="padding-top:2rem;">
+      <div style="font-size:36px;margin-bottom:12px;opacity:.2;">📭</div>
+      <div style="font-size:15px;font-weight:500;margin-bottom:6px;">${t('noResults')}</div>
+      <div style="font-size:13px;">${t('noResultsDesc')} "${esc(q)}" ${t('noResultsIn')}</div>
+    </div>`;
+    return;
+  }
+  const capaIcon = hasPhoto => hasPhoto
+    ? `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M9 2h6l2 3H4L6 2z"/><rect x="2" y="6" width="20" height="15" rx="2"/></svg>`
+    : `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>`;
+  res.innerHTML = `<div style="font-size:12px;color:#aaa;margin-bottom:10px;">${matches.length} ${matches.length!==1?t('results'):t('result')}</div>` +
+    matches.map(m => `
+    <div class="sr-card" onclick="showPhotoDetailFromSearch('${m.boxId}','${m.photoId}')">
+      <div class="sr-item">${highlight(m.item, q)}</div>
+      <div class="sr-path" style="margin-top:5px;">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+        <span class="sr-box">${esc(m.boxName)}</span>
+        ${m.location ? `<span class="sr-loc">· ${esc(m.location)}</span>` : ''}
+      </div>
+      <div style="margin-top:5px;display:flex;align-items:center;gap:5px;">
+        <span class="sr-capa">
+          <span class="sr-capa-dot"></span>
+          ${t('capaOf')} ${m.layerNum} ${t('of')} ${m.layerTotal}
+          &nbsp;${capaIcon(m.hasPhoto)}
+          ${m.hasPhoto ? t('withPhotoTag') : t('textTag')}
+        </span>
+      </div>
+    </div>`).join('');
+}
+
+function showPhotoDetailFromSearch(boxId, photoId) {
+  currentBoxId = boxId;
+  currentPhotoId = photoId;
+  const box = state.boxes.find(b => b.id === boxId);
+  const photo = box?.photos.find(p => p.id === photoId);
+  if (!photo) { showBox(boxId); return; }
+  const idx = box.photos.indexOf(photo);
+  const typeLabel2 = photo.dataUrl ? '' : ' '+t('layerText');
+  document.getElementById('photo-title').textContent = t('capaOf') + ' ' + (idx + 1) + typeLabel2;
+  const bigEl = document.getElementById('photo-big');
+  if (photo.dataUrl) { bigEl.src = photo.dataUrl; bigEl.style.display = 'block'; }
+  else { bigEl.style.display = 'none'; }
+  renderPhotoItems(photo.items);
+  document.getElementById('save-photo-btn').textContent = t('saveChanges');
+  document.getElementById('save-photo-btn').disabled = false;
+  setView('photo');
+}
+
+loadState();
+</script>
+</body>
+</html>
